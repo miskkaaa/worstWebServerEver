@@ -1,0 +1,13 @@
+body {
+    background-color: black;
+    color: white;
+    vertical-align: middle;
+    display: table-cell;
+}
+html {
+    display: table;
+    margin: auto;
+}
+html, body {
+    height: 100%;
+}
