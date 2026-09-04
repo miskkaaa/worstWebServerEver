@@ -7,4 +7,5 @@ Yes.
 
 ## Info
 Default port set in src/main.cpp is `6767` \
+use .wsecfg wherever htdocs is **(make sure to change src/server.cpp since i hardcoded it!)** to configure hidden files/folders and 404 pages
 idk what else
