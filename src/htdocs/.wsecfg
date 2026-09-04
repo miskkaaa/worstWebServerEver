@@ -1,0 +1,5 @@
+404page=/404.html
+400page=/400.html
+
+hiddenfolders = /admin
+hiddenfiles = secret.json

@@ -1,6 +1,5 @@
 #include "includes/server.hpp"
 #include "includes/request.hpp"
-#include <asm-generic/socket.h>
 #include <iostream>
 
 #include <filesystem>
@@ -21,6 +20,7 @@ std::string res(const std::string& stat, const std::string& type, const std::str
         "Connection: close\r\n"
         "\r\n" + body;
 }
+
 std::string file(const std::string& path) {
     std::filesystem::path root = "../../src/htdocs";
 
@@ -40,10 +40,12 @@ std::string file(const std::string& path) {
             return "";
         }
     }
+
     if (!std::filesystem::exists(filePath) ||
         !std::filesystem::is_regular_file(filePath)) {
         return "";
     }
+
     std::ifstream file(filePath, std::ios::binary);
     if (!file) return "";
 
@@ -70,9 +72,21 @@ std::string content(const std::string& path) {
 }
 
 
-server::server(int port) : port(port), server_fd(-1) {
+server::server(int port) : port(port), server_fd(-1), config(cfg::loadConfig("../../src/htdocs/.wsecfg")) {
+    std::cout << "404 page: " << config.page404 << "\n";
+    std::cout << "400 page: " << config.page400 << "\n";
+
+    for (const auto& file : config.hiddenFiles) {
+        std::cout << "hidden file: " << file << "\n";
+    }
+
+    for (const auto& folder : config.hiddenFolders) {
+        std::cout << "hidden folder: " << folder << "\n";
+    }
+
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) throw std::runtime_error("failed to create socket");
+
     int opt = 1;
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
         close(server_fd);
@@ -82,7 +96,7 @@ server::server(int port) : port(port), server_fd(-1) {
     sockaddr_in adress{};                       // configure adress
     adress.sin_family = AF_INET;                // inet thingy idk the tutorial doesnt explain it
     adress.sin_addr.s_addr = INADDR_ANY;        // all network interfaces
-    adress.sin_port = htons(port);         // convert port to byte order
+    adress.sin_port = htons(port);    // convert port to byte order
 
     if (bind(server_fd, reinterpret_cast<sockaddr*>(&adress), sizeof(adress)) == -1) {
         close(server_fd);
@@ -93,6 +107,7 @@ server::server(int port) : port(port), server_fd(-1) {
         close(server_fd);
         throw std::runtime_error("failed to listen");
     }
+
     std::cout << "hi im on " << port << "\n";
 }
 
@@ -120,13 +135,25 @@ void server::handleClient(int fd) {
 
     buf[bread] = '\0';
     std::string rawreq(buf);
+
     std::cout << "raw request\n";
+
     http::Request request;
 
     /* 400 */
     if (!http::parse(rawreq, request)) {
-        const std::string body = "<h1>400 Bad Request</h1>";
-        const std::string response = res("400 Bad Request", "text/html", body);
+        std::string body = file(config.page400);
+
+        if (body.empty()) {
+            body = "<h1>400 Bad Request</h1>";
+        }
+
+        const std::string response = res(
+            "400 Bad Request",
+            "text/html",
+            body
+        );
+
         send(fd, response.c_str(), response.size(), 0);
 
         return;
@@ -142,6 +169,15 @@ void server::handleClient(int fd) {
     if (request.method != "GET") {
         status = "405 Method Not Allowed";
         body = "<title>405</title><body><h1>405 Method Not Allowed</h1></body>";
+    } else if (cfg::isHiddenFile(request.path, config) ||
+               cfg::isHiddenFolder(request.path, config)) {
+
+        status = "404 Not Found";
+        body = file(config.page404);
+
+        if (body.empty()) {
+            body = "<h1>404 Not Found</h1>";
+        }
     } else if (request.path == "/api/test") {
         status = "200 OK";
         body = 
@@ -153,7 +189,11 @@ void server::handleClient(int fd) {
 
         if (body.empty()) {
             status = "404 Not Found";
-            body = "<h1>404 Not Found</h1>";
+            body = file(config.page404);
+
+            if (body.empty()) {
+                body = "<h1>404 Not Found</h1>";
+            }
         } else {
             status = "200 OK";
         }
@@ -161,6 +201,6 @@ void server::handleClient(int fd) {
 
     std::string type = content(request.path);
 
-    const std::string response = res(status,type,body);
+    const std::string response = res(status, type, body);
     send(fd, response.c_str(), response.size(), 0);
 }
